@@ -1,113 +1,221 @@
-import Image from 'next/image'
+'use client'
 
-export default function Home() {
+import React, { useState } from 'react'
+
+import { UrlBuilder } from '@bytescale/sdk';
+import {
+  UploadWidgetConfig,
+  UploadWidgetOnPreUploadResult,
+} from '@bytescale/upload-widget';
+import { UploadDropzone } from '@bytescale/upload-widget-react';
+
+import NSFWFilter from 'nsfw-filter';
+import Image from 'next/image';
+
+import {BiLoader} from 'react-icons/bi'
+import downloadPhoto from '@/utils/downloadPhoto';
+import appendNewToName from '@/utils/appendNewToName';
+import { CompareSlider } from './components/CompareSlider';
+import Toggle from './components/Toggle';
+
+
+const RestorePage = () => {
+  const [originalPhoto, setOriginalPhoto] = useState<string | null>(null);
+  const [restoredImage, setRestoredImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [restoredLoaded, setRestoredLoaded] = useState<boolean>(false);
+  const [sideBySide, setSideBySide] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState<string | null>(null);
+
+
+
+  const options: UploadWidgetConfig = {
+    apiKey: !!process.env.NEXT_PUBLIC_UPLOAD_API_KEY
+      ? process.env.NEXT_PUBLIC_UPLOAD_API_KEY
+      : 'free',
+    maxFileCount: 1,
+    mimeTypes: ['image/jpeg', 'image/png', 'image/jpg'],
+    editor: { images: { crop: false } },
+    styles: { colors: { primary: '#000' } },
+    onPreUpload: async (
+      file: File
+    ): Promise<UploadWidgetOnPreUploadResult | undefined> => {
+      let isSafe = false;
+      try {
+        isSafe = await NSFWFilter.isSafe(file);
+        console.log({ isSafe });
+        if (!isSafe) va.track('NSFW Image blocked');
+      } catch (error) {
+        console.error('NSFW predictor threw an error', error);
+      }
+      if (!isSafe) {
+        return { errorMessage: 'Detected a NSFW image which is not allowed.' };
+      }
+      // if (data.remainingGenerations === 0) {
+      //   return { errorMessage: 'No more generations left for the day.' };
+      // }
+      return undefined;
+    },
+  };
+
+  const UploadDropZone = () => (
+    <UploadDropzone
+      options={options}
+      onUpdate={({ uploadedFiles }) => {
+        if (uploadedFiles.length !== 0) {
+          const image = uploadedFiles[0];
+          const imageName = image.originalFile.originalFileName;
+          const imageUrl = UrlBuilder.url({
+            accountId: image.accountId,
+            filePath: image.filePath,
+            options: {
+              transformation: 'preset',
+              transformationPreset: 'thumbnail',
+            },
+          });
+          setPhotoName(imageName);
+          setOriginalPhoto(imageUrl);
+          generatePhoto(imageUrl);
+        }
+      }}
+      width="670px"
+      height="250px"
+    />
+  );
+
+  async function generatePhoto(fileUrl: string) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setLoading(true);
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl: fileUrl }),
+      });
+  
+      let newPhoto = await res.json();
+      setRestoredImage(newPhoto);
+    } catch (error) {
+      console.log(error)
+    }
+    setLoading(false);
+  }
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
+    <div className="flex max-w-6xl mx-auto flex-col items-center justify-center py-2 min-h-screen">
+      <main className="flex flex-1 w-full flex-col items-center justify-center text-center px-4 mt-4 sm:mb-0 mb-8">
+      <h1 className="mx-auto max-w-4xl font-display text-4xl font-bold tracking-normal text-slate-900 sm:text-6xl mb-5">
+          Restore any face photo
+        </h1>
+
+
+        {/* Geneations limites */}
+        {/* <p className="text-slate-500">
+            You have{' '}
+            <span className="font-semibold">
+             5 generations
+            </span>{' '}
+            left today. Your generations
+             will renew in{' '}
+            <span className="font-semibold">
+              11 hours and 12 minutes.
+            </span>
+          </p> */}
+
+          <div className="flex justify-between items-center w-full flex-col mt-4">
+          <Toggle
+            className={`${restoredLoaded ? 'visible mb-6' : 'invisible'}`}
+            sideBySide={sideBySide}
+            setSideBySide={(newVal) => setSideBySide(newVal)}
+          />
+          {restoredLoaded && sideBySide && (
+            <CompareSlider
+              original={originalPhoto!}
+              restored={restoredImage!}
             />
-          </a>
-        </div>
-      </div>
+          )}
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore the Next.js 13 playground.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{' '}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+            {!originalPhoto && (
+              <UploadDropZone />
+            )}
+          {originalPhoto && !restoredImage && (
+            <Image
+              alt="original photo"
+              src={originalPhoto}
+              className="rounded-2xl"
+              width={475}
+              height={475}
+            />
+          )}
+          {restoredImage && originalPhoto && !sideBySide && (
+            <div className="flex sm:space-x-4 sm:flex-row flex-col">
+              <div>
+                <h2 className="mb-1 font-medium text-lg">Original Photo</h2>
+                <Image
+                  alt="original photo"
+                  src={originalPhoto}
+                  className="rounded-2xl relative"
+                  width={475}
+                  height={475}
+                />
+              </div>
+              <div className="sm:mt-0 mt-8">
+                <h2 className="mb-1 font-medium text-lg">Restored Photo</h2>
+                <a href={restoredImage} target="_blank" rel="noreferrer">
+                  <Image
+                    alt="restored photo"
+                    src={restoredImage}
+                    className="rounded-2xl relative sm:mt-0 mt-2 cursor-zoom-in"
+                    width={475}
+                    height={475}
+                    onLoadingComplete={() => setRestoredLoaded(true)}
+                  />
+                </a>
+              </div>
+            </div>
+          )}
+          {loading && (
+            <button
+              disabled
+              className="bg-black rounded-full text-white font-medium px-2 pt-2 pb-3 mt-8 hover:bg-black/80 w-40"
+            >
+              <span className=" flex items-center ml-2 gap-2">
+                <BiLoader className="animate-spin" size={22}/>
+                Restoring..
+              </span>
+            </button>
+          )}
+           <div className="flex space-x-2 justify-center">
+            {originalPhoto && !loading && (
+              <button
+                onClick={() => {
+                  setOriginalPhoto(null);
+                  setRestoredImage(null);
+                  setRestoredLoaded(false);
+                  setError(null);
+                }}
+                className="bg-black rounded-full text-white font-medium px-4 py-2 mt-8 hover:bg-black/80 transition"
+              >
+                Upload New Photo
+              </button>
+            )}
+            {restoredLoaded && (
+              <button
+                onClick={() => {
+                  downloadPhoto(restoredImage!, appendNewToName(photoName!));
+                }}
+                className="bg-white rounded-full text-black border font-medium px-4 py-2 mt-8 hover:bg-gray-100 transition"
+              >
+                Download Restored Photo
+              </button>
+            )}
+          </div>
+          </div>
+      </main>
+  </div>
   )
 }
+
+export default RestorePage
