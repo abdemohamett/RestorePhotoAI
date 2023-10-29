@@ -18,7 +18,6 @@ import appendNewToName from '@/utils/appendNewToName';
 import { CompareSlider } from './components/CompareSlider';
 import Toggle from './components/Toggle';
 
-
 const RestorePage = () => {
   const [originalPhoto, setOriginalPhoto] = useState<string | null>(null);
   const [restoredImage, setRestoredImage] = useState<string | null>(null);
@@ -31,6 +30,7 @@ const RestorePage = () => {
 
 
   const options: UploadWidgetConfig = {
+    //@ts-ignore
     apiKey: !!process.env.NEXT_PUBLIC_UPLOAD_API_KEY
       ? process.env.NEXT_PUBLIC_UPLOAD_API_KEY
       : 'free',
@@ -45,6 +45,7 @@ const RestorePage = () => {
       try {
         isSafe = await NSFWFilter.isSafe(file);
         console.log({ isSafe });
+        //@ts-ignore
         if (!isSafe) va.track('NSFW Image blocked');
       } catch (error) {
         console.error('NSFW predictor threw an error', error);
